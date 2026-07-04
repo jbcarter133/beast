@@ -35,6 +35,7 @@ export class NPCContoller {
                 }
             }
         }
+        this.agent.bot.known_structures = positions;
         return positions;
     }
 

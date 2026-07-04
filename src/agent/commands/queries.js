@@ -338,6 +338,16 @@ export const queryList = [
         }
     },
     {
+        name: '!trustLevel',
+        description: "Check Beast's trust level with a specific player.",
+        params: {
+            'player_name': { type: 'string', description: 'The name of the player to check.' }
+        },
+        perform: function (agent, player_name) {
+            return `Trust level with ${player_name}: ${agent.trust.getTier(player_name)}`;
+        }
+    },
+    {
         name: '!help',
         description: 'Lists all available commands and their descriptions.',
         perform: async function (agent) {

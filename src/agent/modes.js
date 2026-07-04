@@ -436,6 +436,10 @@ export function initModes(agent) {
     _agent = agent;
     // the mode controller is added to the bot object so it is accessible from anywhere the bot is used
     agent.bot.modes = new ModeController();
+    // snapshot of block positions Beast has built itself, kept as plain data (not
+    // a reference back to the agent/npc controller) so it's safe for the sandboxed
+    // code compartment to read via constraints.js
+    agent.bot.known_structures = [];
     if (agent.task) {
         agent.bot.restrict_to_inventory = agent.task.restrict_to_inventory;
     }

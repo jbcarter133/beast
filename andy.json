@@ -1,6 +1,8 @@
 {
     "name": "Beast",
 
+    "owner": "Jordan",
+
     "model": "groq/llama-3.3-70b-versatile",
 
     "code_model": "groq/llama-3.3-70b-versatile",

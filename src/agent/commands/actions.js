@@ -189,6 +189,10 @@ export const actionsList = [
             'num': { type: 'int', description: 'The number of items to give.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
         perform: runAsAction(async (agent, player_name, item_name, num) => {
+            if (!agent.trust.isAtLeast(player_name, 'acquaintance')) {
+                skills.log(agent.bot, `Refusing to give items to ${player_name}: not enough trust established yet (currently: ${agent.trust.getTier(player_name)}).`);
+                return;
+            }
             await skills.giveToPlayer(agent.bot, item_name, player_name, num);
         })
     },

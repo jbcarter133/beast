@@ -3,6 +3,7 @@ import * as world from "./world.js";
 import pf from 'mineflayer-pathfinder';
 import Vec3 from 'vec3';
 import settings from "../../../settings.js";
+import { canDigStraightDown } from './constraints.js';
 
 const blockPlaceDelay = settings.block_place_delay == null ? 0 : settings.block_place_delay;
 const useDelay = blockPlaceDelay > 0;
@@ -573,6 +574,16 @@ export async function breakBlockAt(bot, x, y, z) {
     if (x == null || y == null || z == null) throw new Error('Invalid position to break block at.');
     let block = bot.blockAt(Vec3(x, y, z));
     if (block.name !== 'air' && block.name !== 'water' && block.name !== 'lava') {
+        const bot_pos = bot.entity.position;
+        const is_straight_down = Math.floor(x) === Math.floor(bot_pos.x) && Math.floor(z) === Math.floor(bot_pos.z) && y < bot_pos.y;
+        if (is_straight_down) {
+            const dig_check = canDigStraightDown(bot, Math.floor(x), Math.floor(y), Math.floor(z));
+            if (!dig_check.safe) {
+                log(bot, `Refusing to dig straight down at x:${x.toFixed(1)}, y:${y.toFixed(1)}, z:${z.toFixed(1)}: ${dig_check.reason}`);
+                return false;
+            }
+        }
+
         if (bot.modes.isOn('cheat')) {
             if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
             let msg = '/setblock ' + Math.floor(x) + ' ' + Math.floor(y) + ' ' + Math.floor(z) + ' air';
