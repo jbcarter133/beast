@@ -1,5 +1,5 @@
 const settings = {
-    "minecraft_version": "1.21.6", // or specific version like "1.21.6"
+    "minecraft_version": "auto", // "auto" negotiates from the server, or pin a specific version like "1.21.6"
     "host": "127.0.0.1", // or "localhost", "your.ip.address.here"
     "port": 59744, // set to -1 to automatically scan for open ports
     "auth": "offline", // or "microsoft"
