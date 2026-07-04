@@ -3,6 +3,7 @@ import * as mc from '../../utils/mcdata.js';
 import { getCommandDocs } from './index.js';
 import convoManager from '../conversation.js';
 import { checkLevelBlueprint, checkBlueprint } from '../tasks/construction_tasks.js';
+import { loadSchematicFile, tallyMaterials, listSchematics } from '../library/schematics.js';
 import { load } from 'cheerio';
 
 const pad = (str) => {
@@ -335,6 +336,43 @@ export const queryList = [
                 console.error("Error fetching or parsing HTML:", error);
                 return `The following error occurred: ${error}`
               }
+        }
+    },
+    {
+        name: '!listSchematics',
+        description: 'List the schematics Beast can build from the schematics folder.',
+        perform: function (agent) {
+            const names = listSchematics();
+            if (names.length === 0)
+                return 'No schematics found. Add .json, .schem, or .schematic files to the schematics folder.';
+            return 'Available schematics: ' + names.join(', ');
+        }
+    },
+    {
+        name: '!checkMaterials',
+        description: 'Preview the full material list for a schematic and how much of it Beast is missing, before committing to build it.',
+        params: {
+            'name': { type: 'string', description: 'The name of the schematic to check (without file extension).' }
+        },
+        perform: async function (agent, name) {
+            const { construction, error } = await loadSchematicFile(name, agent.bot);
+            if (error) return error;
+
+            const { counts, total } = tallyMaterials(construction);
+            const inventory = world.getInventoryCounts(agent.bot);
+
+            let res = `MATERIALS for "${name}" (${total} blocks total):`;
+            const missing = [];
+            for (const [block, need] of Object.entries(counts).sort((a, b) => b[1] - a[1])) {
+                const have = inventory[block] || 0;
+                const short = Math.max(0, need - have);
+                res += `\n- ${block}: need ${need}, have ${have}`;
+                if (short > 0) missing.push(`${short} ${block}`);
+            }
+            res += missing.length > 0
+                ? `\nStill need to gather: ${missing.join(', ')}.`
+                : `\nYou have everything needed to build this.`;
+            return pad(res);
         }
     },
     {

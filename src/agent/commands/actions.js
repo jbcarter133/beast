@@ -1,6 +1,44 @@
 import * as skills from '../library/skills.js';
+import * as world from '../library/world.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
+import { loadSchematicFile, tallyMaterials, footprintPositions, MAX_BUILD_BLOCKS } from '../library/schematics.js';
+
+/**
+ * Drive BuildGoal to completion for a one-off schematic build. Runs outside
+ * runAsAction on purpose: BuildGoal.executeNext already wraps each block op in
+ * its own action (and requires the agent to be idle to do so), so wrapping this
+ * loop in another action would deadlock it. Returns { built, interrupted, missing }.
+ */
+async function driveSchematicBuild(agent, construction) {
+    const bot = agent.bot;
+    const build_goal = agent.npc.build_goal;
+    let position = null, orientation = null, missing = {};
+    let prevMissingKey = null;
+    const volume = construction.blocks.length * construction.blocks[0].length * construction.blocks[0][0].length;
+    const MAX_ITER = volume + 50; // safety cap against any non-converging pass
+
+    for (let i = 0; i < MAX_ITER; i++) {
+        if (bot.interrupt_code) return { built: false, interrupted: true, missing, position };
+        const res = await build_goal.executeNext(construction, position, orientation);
+        position = res.position;
+        orientation = res.orientation;
+        missing = res.missing;
+        if (!position) return { built: false, interrupted: false, missing, error: 'Could not find a clear space nearby to build.' };
+
+        // mark the footprint as a known column so the dig-safety veto lets Beast
+        // work inside its own build
+        bot.known_structures = (bot.known_structures || []).concat(footprintPositions(construction, position));
+
+        const missingKey = JSON.stringify(missing);
+        if (!res.acted) break; // nothing left to place or clear
+        // acted but stuck on the same missing materials two passes running: no
+        // further progress is possible without more supplies
+        if (Object.keys(missing).length > 0 && missingKey === prevMissingKey) break;
+        prevMissingKey = missingKey;
+    }
+    return { built: Object.keys(missing).length === 0, interrupted: false, missing, position };
+}
 
 
 function runAsAction (actionFn, resume = false, timeout = -1) {
@@ -502,5 +540,34 @@ export const actionsList = [
         perform: runAsAction(async (agent, tool_name, target) => {
             await skills.useToolOn(agent.bot, tool_name, target);
         })
+    },
+    {
+        name: '!buildSchematic',
+        description: 'Build a saved schematic (from the schematics folder) at a clear spot nearby, placing whatever materials Beast currently has.',
+        params: {
+            'name': { type: 'string', description: 'The name of the schematic to build (without file extension).' }
+        },
+        // deliberately not wrapped in runAsAction: the build driver runs BuildGoal,
+        // which manages its own per-block actions internally.
+        perform: async function (agent, name) {
+            const { construction, error } = await loadSchematicFile(name, agent.bot);
+            if (error) return error;
+
+            const { total } = tallyMaterials(construction);
+            if (total > MAX_BUILD_BLOCKS) {
+                return `"${name}" needs about ${total} blocks, which is too large to auto-build (limit ${MAX_BUILD_BLOCKS}). Use !checkMaterials("${name}") to see the breakdown, and consider splitting it up.`;
+            }
+
+            skills.log(agent.bot, `Starting build of "${name}" (~${total} blocks).`);
+            const result = await driveSchematicBuild(agent, construction);
+            if (result.error) return result.error;
+            if (result.interrupted) return `Build of "${name}" was interrupted.`;
+            if (result.built) return `Finished building "${name}".`;
+
+            const missingList = Object.entries(result.missing)
+                .map(([b, n]) => `${n} ${b}`)
+                .join(', ');
+            return `Placed what I could of "${name}". Still missing: ${missingList}.`;
+        }
     },
 ];
