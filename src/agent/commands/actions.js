@@ -558,16 +558,81 @@ export const actionsList = [
                 return `"${name}" needs about ${total} blocks, which is too large to auto-build (limit ${MAX_BUILD_BLOCKS}). Use !checkMaterials("${name}") to see the breakdown, and consider splitting it up.`;
             }
 
+            const session = agent.build_session;
+            // starting a different build clears any prior split of responsibilities
+            if (session.name !== name) session.reset(name);
+
             skills.log(agent.bot, `Starting build of "${name}" (~${total} blocks).`);
             const result = await driveSchematicBuild(agent, construction);
             if (result.error) return result.error;
             if (result.interrupted) return `Build of "${name}" was interrupted.`;
-            if (result.built) return `Finished building "${name}".`;
 
-            const missingList = Object.entries(result.missing)
-                .map(([b, n]) => `${n} ${b}`)
-                .join(', ');
-            return `Placed what I could of "${name}". Still missing: ${missingList}.`;
+            // credit anyone whose claimed materials have since been supplied
+            const prevClaims = { ...session.claims };
+            const prevMissing = { ...session.missing };
+            session.setMissing(result.missing);
+            for (const [item, player] of Object.entries(prevClaims)) {
+                if (prevMissing[item] && !result.missing[item]) {
+                    agent.trust.recordEvent(player, 'gave_requested_item');
+                }
+            }
+
+            if (result.built) {
+                session.reset();
+                return `Finished building "${name}".`;
+            }
+
+            // Surface the shortfall as a shared job rather than grinding silently.
+            const unclaimed = session.getUnclaimed();
+            const claimed = session.getClaimed();
+            const unclaimedList = Object.entries(unclaimed).map(([b, n]) => `${n} ${b}`).join(', ');
+            const claimedList = Object.entries(claimed).map(([b, c]) => `${c.count} ${b} (${c.player})`).join(', ');
+
+            let res = `Placed what I could of "${name}".`;
+            if (unclaimedList) res += ` Still short: ${unclaimedList}.`;
+            if (claimedList) res += ` Being handled by others: ${claimedList}.`;
+            // hint the model to ask for help the first time, and not to re-nag after
+            if (!session.asked && unclaimedList) {
+                res += ` (Ask if anyone wants to split gathering this; you'll take whatever they don't.)`;
+                session.asked = true;
+            } else if (unclaimedList) {
+                res += ` (You've already asked - just gather your share unless someone offers.)`;
+            }
+            return res;
+        }
+    },
+    {
+        name: '!offerHelp',
+        description: "Record that a player has offered to gather a material for the current build, so Beast leaves that one to them and focuses on the rest. Use when a player says they'll grab something.",
+        params: {
+            'player_name': { type: 'string', description: 'The player offering to help.' },
+            'item_name': { type: 'string', description: 'The material they will gather.' }
+        },
+        perform: async function (agent, player_name, item_name) {
+            const session = agent.build_session;
+            if (!session.hasActiveBuild())
+                return `There's no build in progress to help with.`;
+            // relying on someone to deliver takes a minimum of trust; a stranger
+            // could claim everything and never come through, stalling the build
+            if (!agent.trust.isAtLeast(player_name, 'acquaintance'))
+                return `I don't know ${player_name} well enough to count on them for supplies yet, so I'll keep gathering ${item_name} myself.`;
+            if (!session.claim(item_name, player_name))
+                return `"${item_name}" isn't something I still need for "${session.name}".`;
+            return `Thanks ${player_name} - you're on ${item_name}, I'll handle the rest.`;
+        }
+    },
+    {
+        name: '!unclaimMaterial',
+        description: "Take a material back onto Beast's own gathering list (e.g. if a player can no longer supply it).",
+        params: {
+            'item_name': { type: 'string', description: 'The material to take back.' }
+        },
+        perform: async function (agent, item_name) {
+            const session = agent.build_session;
+            if (!session.hasActiveBuild())
+                return `There's no build in progress.`;
+            session.unclaim(item_name);
+            return `Alright, I'll gather ${item_name} myself.`;
         }
     },
 ];

@@ -376,6 +376,13 @@ export const queryList = [
         }
     },
     {
+        name: '!buildStatus',
+        description: 'Show the current build and how its remaining materials are split between Beast and any players helping.',
+        perform: function (agent) {
+            return pad(agent.build_session.summary());
+        }
+    },
+    {
         name: '!trustLevel',
         description: "Check Beast's trust level with a specific player.",
         params: {

@@ -9,6 +9,7 @@ import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
 import { TrustManager } from './trust_manager.js';
+import { BuildSession } from './collaboration.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
@@ -46,6 +47,7 @@ export class Agent {
         this.memory_bank = new MemoryBank();
         this.trust = new TrustManager(this);
         this.trust.load();
+        this.build_session = new BuildSession();
         this.self_prompter = new SelfPrompter(this);
         convoManager.initAgent(this);
         await this.prompter.initExamples();
